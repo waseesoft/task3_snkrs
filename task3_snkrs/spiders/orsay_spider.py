@@ -27,8 +27,8 @@ class OrsaySpider(scrapy.Spider):
         if products_found > 72:
             pages = math.ceil(products_found / 72) + 1
             load_more = '?sz={}'
-            yield from [response.follow(load_more.format(page * 72), callback=self.parse_products_url)
-                        for page in range(2, pages)]
+            return [response.follow(load_more.format(page * 72), callback=self.parse_products_url)
+                    for page in range(2, pages)]
 
     def parse_product(self, response):
         item = Item()
@@ -36,11 +36,23 @@ class OrsaySpider(scrapy.Spider):
         item['name'] = self.get_name(response)
         item['description'] = self.get_description(response)
         item['availability'] = self.get_availability(response)
-        item['image_urls'] = self.get_image_urls(response)
         item['currency'] = self.get_currency(response)
-        item['skus'] = self.get_skus(response)
+        item['skus'] = [self.get_skus(response)]
+        color_urls = self.get_color_wise_urls(response)
 
-        return item
+        return item if not color_urls else self.color_request(color_urls, item)
+
+    def color_request(self, color_urls, item):
+        return scrapy.Request(color_urls.pop(), callback=self.parse_sizes, meta={'item': item, 'urls': color_urls})
+
+    def parse_sizes(self, response):
+        item = response.meta['item']
+        sku = item['skus']
+        sku.append(self.get_skus(response))
+        item['skus'] = sku
+        color_urls = response.meta['urls']
+
+        return self.color_request(color_urls, item) if color_urls else item
 
     def get_total_products(self, response):
         return response.css('.load-more-progress::attr(data-max)').get()
@@ -64,33 +76,34 @@ class OrsaySpider(scrapy.Spider):
         return response.css('.with-gutter::text').re(r'(\S.*)')
 
     def get_sizes(self, response):
-        return self.filter_empty(response.css('li.selectable a.swatchanchor::text').re('(\S.*)'))
+        return self.filter_sizes(response.css('li.selectable a.swatchanchor::text').re('(\S.*)'))
 
     def get_colors(self, response):
         return response.css('.swatchanchor::attr(title)').re('-\s(.*)')
+
+    def get_selected_color(self, response):
+        return response.css('li[class="selectable selected"] .swatchanchor::attr(title)').re_first('-\s(.*)')
+
+    def get_color_wise_urls(self, response):
+        return response.css('ul[class="swatches color"] li[class="selectable"] a::attr(href)').getall()
 
     def get_old_prices(self, response):
         return self.remove_commas(response.css('.price-standard::text').re('[\d,.]+'))
 
     def get_sale_price(self, response):
-        return ''.join(response.css('.price-sales::text').re('[\d.]+'))
+        return response.css('.price-sales::text').re_first('[\d.]+')
 
     def remove_commas(self, elements):
         return [e.replace(',', '') for e in elements]
 
-    def filter_empty(self, data):
-        return ['size one'] if not data else data
+    def filter_sizes(self, data):
+        return ['one-size'] if not data else data
 
     def get_skus(self, response):
-        skus = []
-        for raw_sku in self.get_sizes(response):
-            skus.append({
-                raw_sku: {
-                    'size': raw_sku,
-                    'colors': self.get_colors(response),
-                    'old_prices': self.get_old_prices(response),
-                    'price': self.get_sale_price(response)
-                }
-            })
-
-        return skus
+        sku = {
+            self.get_selected_color(response): {
+                'sizes': self.filter_sizes(self.get_sizes(response)),
+                'image_urls': self.get_image_urls(response),
+            }
+        }
+        return sku
