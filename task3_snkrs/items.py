@@ -10,3 +10,4 @@ class Item(scrapy.Item):
     currency = scrapy.Field()
     image_urls = scrapy.Field()
     skus = scrapy.Field()
+    meta = scrapy.Field()

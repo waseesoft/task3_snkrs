@@ -35,19 +35,25 @@ class OrsaySpider(scrapy.Spider):
         item['name'] = self.get_name(response)
         item['description'] = self.get_description(response)
         item['skus'] = self.get_skus(response)
-        color_urls = response.css('ul[class="swatches color"] li[class="selectable"] a::attr(href)').getall()
+        item['image_urls'] = self.get_image_urls(response)
+        item['meta'] = self.color_requests(item, response)
+        color_requests = item['meta']
 
-        return self.color_requests(color_urls, item) if color_urls else item
+        return color_requests.pop() if color_requests else item
 
     def parse_color(self, response):
         item = response.meta['item']
         item['skus'] += self.get_skus(response)
-        color_urls = response.meta['urls']
+        item['image_urls'] += self.get_image_urls(response)
+        color_requests = item['meta']
 
-        return self.color_requests(color_urls, item) if color_urls else item
+        return color_requests.pop() if color_requests else item
 
-    def color_requests(self, color_urls, item):
-        return scrapy.Request(color_urls.pop(), callback=self.parse_color, meta={'item': item, 'urls': color_urls})
+    def color_requests(self, item, response):
+        color_urls = response.css('ul[class="swatches color"] li[class="selectable"] a::attr(href)').getall()
+
+        return [scrapy.Request(url, callback=self.parse_color, meta={'item': item})
+                for url in color_urls]
 
     def get_item_id(self, response):
         return response.css('div.product-tile::attr(data-itemid)').get()
@@ -78,11 +84,13 @@ class OrsaySpider(scrapy.Spider):
         return self.filter_colors(response.css('li[class="selectable selected"] .swatchanchor::attr(title)').getall())
 
     def get_old_prices(self, response):
-        old_prices = response.css('.price-standard::text').re('[\d,.]+')
-        return [e.replace(',', '') for e in old_prices]
+        return self.remove_commas(response.css('.price-standard::text').re('[\d,.]+'))
 
     def get_sale_price(self, response):
-        return response.css('.price-sales::text').re_first('[\d.]+')
+        return self.remove_commas(response.css('.price-sales::text').re('[\d,.]+'))
+
+    def remove_commas(self, elements):
+        return [e.replace(',', '') for e in elements]
 
     def filter_empty_elements(self, data):
         return [e.strip() for e in data if e.strip() != '']
@@ -99,7 +107,6 @@ class OrsaySpider(scrapy.Spider):
                 'availability': self.get_availability(response),
                 'currency': self.get_currency(response),
                 'old_prices': self.get_old_prices(response),
-                'price': self.get_sale_price(response),
-                'image_urls': self.get_image_urls(response),
+                'price': self.get_sale_price(response)[0],
             }
         return [sku]
