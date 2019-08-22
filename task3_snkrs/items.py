@@ -1,7 +1,7 @@
 import scrapy
 
 
-class SnkrsItem(scrapy.Item):
+class Item(scrapy.Item):
     item_id = scrapy.Field()
     name = scrapy.Field()
     brand = scrapy.Field()
