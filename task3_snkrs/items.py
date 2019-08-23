@@ -2,7 +2,7 @@ import scrapy
 
 
 class Item(scrapy.Item):
-    item_id = scrapy.Field()
+    id = scrapy.Field()
     name = scrapy.Field()
     brand = scrapy.Field()
     description = scrapy.Field()
