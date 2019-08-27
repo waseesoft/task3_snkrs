@@ -15,8 +15,11 @@ class OrsaySpider(CrawlSpider):
     start_urls = [
         'https://www.orsay.com/de-de/produkte/',
     ]
+    listings_css = [
+        '.has-sub-menu',
+        ]
     rules = [
-        Rule(LinkExtractor(restrict_css='a.refinement-category-link'), callback='parse_pagination')
+        Rule(LinkExtractor(restrict_css=listings_css), callback='parse_pagination'),
     ]
 
     def parse_pagination(self, response):
@@ -61,45 +64,44 @@ class OrsaySpider(CrawlSpider):
             return item
 
     def get_product_id(self, response):
-        return response.css('div.product-tile::attr(data-itemid)').getall()[0]
+        return response.css('.product-tile::attr(data-itemid)').getall()[0]
 
     def get_name(self, response):
         return response.css('.product-name::text').getall()[0]
 
     def get_image_urls(self, response):
-        return response.css('img.productthumbnail::attr(src)').getall()
+        return response.css('.productthumbnail::attr(src)').getall()
 
     def get_description(self, response):
-        care = response.css('.product-material .product-info-title ~p::text').getall()
-        details = response.css('.with-gutter::text').getall()
+        care = response.css('.product-info-title ~p::text').getall()
+        details = response.css('.js-collapsible ::text').getall()
         return self.clean(details + care)
 
     def get_prices(self, response):
         return {
             'currency': response.css('.current .country-currency::text').getall()[0],
-            'price': re.sub(r',', '.', response.css('.price-sales::text').re('[\d,.]+')[0]),
+            'price': re.sub(r',', '.', response.css('.price-sales::text').re(r'[\d,.]+')[0]),
             'old_prices': [re.sub(r',', '.', e) for e in response.css('.price-standard::text')
-                .re('[\d,.]+')],
+                .re(r'[\d,.]+')],
         }
 
     def clean(self, data):
         return [e.strip() for e in data if e and e.strip()]
 
     def get_skus(self, response):
-        sku = {}
-        color_css = 'li[class="selectable selected"] .swatchanchor::attr(title)'
+        skus = {}
+        color_css = '.selectable.selected .swatchanchor::attr(title)'
         color = response.css(color_css).getall()[0].split('-')[-1].strip()
-        sizes = response.css('li.selectable a.swatchanchor::text').getall()
+        sizes = response.css('.selectable a.swatchanchor::text').getall()
         sizes = {e: True for e in self.clean(sizes)}
-        sizes_out_stock = response.css('li.unselectable a.swatchanchor::text').getall()
-        sizes.update({e: False for e in self.clean(sizes_out_stock)}) or {'size-one': True}
+        sizes_out_stock = response.css('.unselectable a.swatchanchor::text').getall()
+        sizes.update({e: False for e in self.clean(sizes_out_stock)})
 
-        for size_key, availability in sizes.items():
-            sku['{}_{}'.format(color, size_key)] = {
-                'size': size_key,
-                'color': color,
-                'availability': availability,
-                'prices': self.get_prices(response)
-            }
+        for size, availability in sizes.items() or {'size-one': True}:
+            sku = self.get_prices(response)
+            sku['size'] = size
+            sku['availability'] = availability
+            sku['color'] = color
+            skus[f'{color}_{size}'] = sku
 
-        return sku
+        return skus
