@@ -56,12 +56,10 @@ class SnkrsSpider(CrawlSpider):
             css = '.attribute_list li:not([class=" hidden"]) span.size_EU::text'
             sizes = self.clean(response.css(css).getall()) or ['size-one']
 
-        for index, size in enumerate(sizes):
-            sku = {
-                'size': size,
-                'pricing': self.get_prices(response),
-                'availability': response.css('.availability::text').getall()[0],
-            }
+        for size in sizes:
+            sku = self.get_prices(response)
+            sku['size'] = size
+            sku['availability'] = response.css('.availability::text').getall()[0]
             skus[size] = sku
 
         return skus
