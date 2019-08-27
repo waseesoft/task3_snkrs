@@ -1,14 +1,16 @@
-import re
 from scrapy import Request
-from task3_snkrs.items import OrsayItem
 from scrapy.spiders import CrawlSpider, Rule
-from w3lib.url import add_or_replace_parameter
 from scrapy.linkextractors import LinkExtractor
+from w3lib.url import add_or_replace_parameter
+
+from task3_snkrs.items import OrsayItem
 
 
 class OrsaySpider(CrawlSpider):
     name = "orsay"
     PAGE_SIZE = 72
+    PRICE_RE = r'[\d,.]+'
+
     allowed_domains = [
         'orsay.com',
     ]
@@ -16,17 +18,18 @@ class OrsaySpider(CrawlSpider):
         'https://www.orsay.com/de-de/produkte/',
     ]
     listings_css = [
-        '.has-sub-menu',
-        ]
+        '.navigation-link',
+    ]
     rules = [
         Rule(LinkExtractor(restrict_css=listings_css), callback='parse_pagination'),
     ]
 
     def parse_pagination(self, response):
         yield from super().parse(response)
+
         urls_s = response.css('a.thumb-link')
         yield from [response.follow(url_s, callback=self.parse_product) for url_s in urls_s]
-        product_count = int(response.css('.load-more-progress::attr(data-max)').get())
+        product_count = int(response.css('.load-more-progress::attr(data-max)').getall()[0])
 
         if product_count > self.PAGE_SIZE:
             pages = product_count // self.PAGE_SIZE + 2
@@ -38,8 +41,8 @@ class OrsaySpider(CrawlSpider):
         item['product_id'] = self.get_product_id(response)
         item['name'] = self.get_name(response)
         item['description'] = self.get_description(response)
-        item['skus'] = self.get_skus(response)
         item['image_urls'] = self.get_image_urls(response)
+        item['skus'] = self.get_skus(response)
         item['meta'] = {'requests': self.get_color_requests(item, response)}
 
         return self.request_or_item(item)
@@ -48,7 +51,6 @@ class OrsaySpider(CrawlSpider):
         item = response.meta['item']
         item['skus'].update(self.get_skus(response))
         item['image_urls'] += self.get_image_urls(response)
-
         return self.request_or_item(item)
 
     def get_color_requests(self, item, response):
@@ -69,39 +71,36 @@ class OrsaySpider(CrawlSpider):
     def get_name(self, response):
         return response.css('.product-name::text').getall()[0]
 
+    def get_description(self, response):
+        details = response.css('.product-info-title ~p::text, .js-collapsible ::text').getall()
+        return self.clean(details)
+
     def get_image_urls(self, response):
         return response.css('.productthumbnail::attr(src)').getall()
-
-    def get_description(self, response):
-        care = response.css('.product-info-title ~p::text').getall()
-        details = response.css('.js-collapsible ::text').getall()
-        return self.clean(details + care)
-
-    def get_prices(self, response):
-        return {
-            'currency': response.css('.current .country-currency::text').getall()[0],
-            'price': re.sub(r',', '.', response.css('.price-sales::text').re(r'[\d,.]+')[0]),
-            'old_prices': [re.sub(r',', '.', e) for e in response.css('.price-standard::text')
-                .re(r'[\d,.]+')],
-        }
-
-    def clean(self, data):
-        return [e.strip() for e in data if e and e.strip()]
 
     def get_skus(self, response):
         skus = {}
         color_css = '.selectable.selected .swatchanchor::attr(title)'
         color = response.css(color_css).getall()[0].split('-')[-1].strip()
-        sizes = response.css('.selectable a.swatchanchor::text').getall()
-        sizes = {e: True for e in self.clean(sizes)}
-        sizes_out_stock = response.css('.unselectable a.swatchanchor::text').getall()
-        sizes.update({e: False for e in self.clean(sizes_out_stock)})
+        sizes = self.clean(response.css('.swatches.size a::text').getall())
+        oos_sizes = self.clean(response.css('.unselectable a.swatchanchor::text').getall())
 
-        for size, availability in sizes.items() or {'size-one': True}:
+        for size in sizes or ['size-one']:
             sku = self.get_prices(response)
+            sku['availability'] = size in oos_sizes
             sku['size'] = size
-            sku['availability'] = availability
             sku['color'] = color
             skus[f'{color}_{size}'] = sku
 
         return skus
+
+    def get_prices(self, response):
+        return {
+            'currency': response.css('.current .country-currency::text').getall()[0],
+            'price': response.css('.price-sales::text').re(self.PRICE_RE)[0].replace(',', ''),
+            'old_prices': [e.replace(',', '') for e in response.css('.price-standard::text')
+                .re(self.PRICE_RE)],
+        }
+
+    def clean(self, data):
+        return [e.strip() for e in data if e and e.strip()]
