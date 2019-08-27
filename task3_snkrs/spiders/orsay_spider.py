@@ -1,57 +1,64 @@
-from re import sub
-from scrapy import Spider, Request
+import re
+from scrapy import Request
+from task3_snkrs.items import OrsayItem
+from scrapy.spiders import CrawlSpider, Rule
 from w3lib.url import add_or_replace_parameter
-from task3_snkrs.items import Item
+from scrapy.linkextractors import LinkExtractor
 
 
-class OrsaySpider(Spider):
+class OrsaySpider(CrawlSpider):
     name = "orsay"
-    page_size = 72
+    PAGE_SIZE = 72
+    allowed_domains = [
+        'orsay.com',
+    ]
     start_urls = [
-        'https://www.orsay.com/de-de/produkte/'
+        'https://www.orsay.com/de-de/produkte/',
+    ]
+    rules = [
+        Rule(LinkExtractor(restrict_css='a.refinement-category-link'), callback='parse_pagination')
     ]
 
-    def parse(self, response):
-        urls_s = response.css('a.refinement-category-link')
-        return [response.follow(url_s, callback=self.parse_categories) for url_s in urls_s]
-
-    def parse_categories(self, response):
-        urls_s = response.css('a.refinement-category-link')
-        return [response.follow(url_s, callback=self.parse_products_url) for url_s in urls_s]
-
-    def parse_products_url(self, response):
+    def parse_pagination(self, response):
+        yield from super().parse(response)
         urls_s = response.css('a.thumb-link')
         yield from [response.follow(url_s, callback=self.parse_product) for url_s in urls_s]
+        product_count = int(response.css('.load-more-progress::attr(data-max)').get())
 
-        products_found = int(response.css('.load-more-progress::attr(data-max)').get())
-        if products_found > self.page_size:
-            pages = products_found // self.page_size + 2
-            return [Request(add_or_replace_parameter(response.url, 'sz', page * self.page_size),
-                            callback=self.parse_products_url) for page in range(2, pages)]
+        if product_count > self.PAGE_SIZE:
+            pages = product_count // self.PAGE_SIZE + 2
+            return [Request(add_or_replace_parameter(response.url, 'sz', page * self.PAGE_SIZE),
+                            callback=self.parse_pagination) for page in range(2, pages)]
 
     def parse_product(self, response):
-        item = Item()
-        item['id'] = self.get_product_id(response)
+        item = OrsayItem()
+        item['product_id'] = self.get_product_id(response)
         item['name'] = self.get_name(response)
         item['description'] = self.get_description(response)
         item['skus'] = self.get_skus(response)
         item['image_urls'] = self.get_image_urls(response)
-        item['meta'] = {'color_requests': self.color_requests(item, response)}
+        item['meta'] = {'requests': self.get_color_requests(item, response)}
 
-        return item['meta']['color_requests'].pop() if item['meta']['color_requests'] else item
+        return self.request_or_item(item)
 
     def parse_color(self, response):
         item = response.meta['item']
         item['skus'].update(self.get_skus(response))
         item['image_urls'] += self.get_image_urls(response)
 
-        return item['meta']['color_requests'].pop() if item['meta']['color_requests'] else item
+        return self.request_or_item(item)
 
-    def color_requests(self, item, response):
-        query = 'ul[class="swatches color"] li[class="selectable"] a::attr(href)'
-        color_urls = response.css(query).getall()
+    def get_color_requests(self, item, response):
+        urls = response.css('.swatches.color li[class="selectable"] a::attr(href)').getall()
         return [Request(url, callback=self.parse_color, dont_filter=True, meta={'item': item})
-                for url in color_urls]
+                for url in urls if url]
+
+    def request_or_item(self, item):
+        if item.get('meta') and item['meta'].get('requests'):
+            return item['meta']['requests'].pop()
+        else:
+            del item['meta']
+            return item
 
     def get_product_id(self, response):
         return response.css('div.product-tile::attr(data-itemid)').getall()[0]
@@ -65,33 +72,29 @@ class OrsaySpider(Spider):
     def get_description(self, response):
         care = response.css('.product-material .product-info-title ~p::text').getall()
         details = response.css('.with-gutter::text').getall()
-        return self.filter_empty_elements(details + care)
-
-    def get_sizes(self, response):
-        available = 'li.selectable a.swatchanchor::text'
-        un_available = 'li.unselectable a.swatchanchor::text'
-        return {**self.extract_sizes(response, available, True),
-                **self.extract_sizes(response, un_available, False)} or {'size-one': True}
-
-    def extract_sizes(self, response, query, is_available=None):
-        return {e: is_available for e in self.filter_empty_elements(response.css(query).getall())}
+        return self.clean(details + care)
 
     def get_prices(self, response):
-        prices = {
+        return {
             'currency': response.css('.current .country-currency::text').getall()[0],
-            'price': sub(r',', '.', response.css('.price-sales::text').re('[\d,.]+')[0]),
-            'old_prices': [sub(r',', '.', e) for e in response.css('.price-standard::text').re('[\d,.]+')],
+            'price': re.sub(r',', '.', response.css('.price-sales::text').re('[\d,.]+')[0]),
+            'old_prices': [re.sub(r',', '.', e) for e in response.css('.price-standard::text')
+                .re('[\d,.]+')],
         }
-        return prices
 
-    def filter_empty_elements(self, data):
-        return [e.strip() for e in data if e.strip() != '' and e]
+    def clean(self, data):
+        return [e.strip() for e in data if e and e.strip()]
 
     def get_skus(self, response):
         sku = {}
-        color_query = 'li[class="selectable selected"] .swatchanchor::attr(title)'
-        color = response.css(color_query).getall()[0].split('-')[-1].strip()
-        for size_key, availability in self.get_sizes(response).items():
+        color_css = 'li[class="selectable selected"] .swatchanchor::attr(title)'
+        color = response.css(color_css).getall()[0].split('-')[-1].strip()
+        sizes = response.css('li.selectable a.swatchanchor::text').getall()
+        sizes = {e: True for e in self.clean(sizes)}
+        sizes_out_stock = response.css('li.unselectable a.swatchanchor::text').getall()
+        sizes.update({e: False for e in self.clean(sizes_out_stock)}) or {'size-one': True}
+
+        for size_key, availability in sizes.items():
             sku['{}_{}'.format(color, size_key)] = {
                 'size': size_key,
                 'color': color,

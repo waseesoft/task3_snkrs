@@ -1,13 +1,11 @@
-import scrapy
+from scrapy import Item, Field
 
 
-class Item(scrapy.Item):
-    id = scrapy.Field()
-    name = scrapy.Field()
-    brand = scrapy.Field()
-    description = scrapy.Field()
-    availability = scrapy.Field()
-    currency = scrapy.Field()
-    image_urls = scrapy.Field()
-    skus = scrapy.Field()
-    meta = scrapy.Field()
+class OrsayItem(Item):
+    product_id = Field()
+    name = Field()
+    brand = Field()
+    description = Field()
+    image_urls = Field()
+    skus = Field()
+    meta = Field()
