@@ -21,7 +21,7 @@ class SnkrsSpider(CrawlSpider):
         item['brand'] = self.get_brand(response)
         item['description'] = self.get_description(response)
         item['image_urls'] = self.get_images_urls(response)
-        item['skus'] = self.get_skus(response)
+        item['skus'] = self.get_sku(response)
 
         return item
 
@@ -47,19 +47,22 @@ class SnkrsSpider(CrawlSpider):
             'new_price': float(response.css('.price::attr(content)').getall()[0]),
         }
 
-    def get_skus(self, response):
+    def get_sku(self, response):
         skus = {}
         css = '.attribute_list li:not([class=" hidden"]) span.units_container::text'
         sizes = self.clean(response.css(css).getall())
+
         if not sizes:
             css = '.attribute_list li:not([class=" hidden"]) span.size_EU::text'
-            sizes = self.clean(response.css(css).getall())
-        for raw_sku in sizes or ['size-one']:
-            skus[raw_sku] = {
-                'size': raw_sku,
+            sizes = self.clean(response.css(css).getall()) or ['size-one']
+
+        for index, size in enumerate(sizes):
+            sku = {
+                'size': size,
                 'pricing': self.get_prices(response),
                 'availability': response.css('.availability::text').getall()[0],
             }
+            skus[size] = sku
 
         return skus
 
