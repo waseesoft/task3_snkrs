@@ -1,10 +1,11 @@
-from scrapy import Item, Field
+from scrapy import Field, Item
 
 
-class SnkrsItem(Item):
-    item_id = Field()
+class OrsayItem(Item):
+    product_id = Field()
     name = Field()
     brand = Field()
     description = Field()
     image_urls = Field()
     skus = Field()
+    meta = Field()
