@@ -72,8 +72,8 @@ class OrsaySpider(CrawlSpider):
         return response.css('.product-name::text').getall()[0]
 
     def get_description(self, response):
-        details = response.css('.product-info-title ~p::text, .js-collapsible ::text').getall()
-        return self.clean(details)
+        css = '.product-info-title ~p::text, .js-collapsible ::text'
+        return self.clean(response.css(css).getall())
 
     def get_image_urls(self, response):
         return response.css('.productthumbnail::attr(src)').getall()
