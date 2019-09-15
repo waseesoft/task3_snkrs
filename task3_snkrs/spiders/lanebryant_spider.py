@@ -8,33 +8,11 @@ from scrapy.linkextractors import LinkExtractor
 from task3_snkrs.items import LanebryantItem
 
 
-class LanebryantSpider(CrawlSpider):
-    name = "lanebryant"
+class LanebryantParser:
     image_req_t = 'https:%s_ms?req=set,json'
     image_url_t = 'https://lanebryant.scene7.com/is/image/%s'
 
-    allowed_domains = [
-        'lanebryant.com',
-        'lanebryant.scene7.com',
-    ]
-    start_urls = [
-        'https://www.lanebryant.com',
-    ]
-
-    listings_css = [
-        '.mar-subnav-links-column',
-        '.mar-pagination a',
-    ]
-    products_css = [
-        '.mar-prd-item-image-container',
-    ]
-
-    rules = [
-        Rule(LinkExtractor(restrict_css=listings_css)),
-        Rule(LinkExtractor(restrict_css=products_css), callback='parse_product'),
-    ]
-
-    def parse_product(self, response):
+    def parse(self, response):
         raw_product = self.get_raw_product(response)
 
         item = LanebryantItem()
@@ -119,3 +97,32 @@ class LanebryantSpider(CrawlSpider):
             return [e.strip() for e in data if e and e.strip()]
         elif isinstance(data, str):
             return data.strip()
+
+
+class LanebryantSpider(CrawlSpider):
+    name = "lanebryant"
+    parser = LanebryantParser()
+
+    allowed_domains = [
+        'lanebryant.com',
+        'lanebryant.scene7.com',
+    ]
+    start_urls = [
+        'https://www.lanebryant.com',
+    ]
+
+    listings_css = [
+        '.mar-subnav-links-column',
+        '.mar-pagination a',
+    ]
+    products_css = [
+        '.mar-prd-item-image-container',
+    ]
+
+    rules = [
+        Rule(LinkExtractor(restrict_css=listings_css)),
+        Rule(LinkExtractor(restrict_css=products_css), callback='parse_product'),
+    ]
+
+    def parse_product(self, response):
+        return self.parser.parse(response)
