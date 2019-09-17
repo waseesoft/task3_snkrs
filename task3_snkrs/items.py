@@ -10,6 +10,17 @@ class SnkrsItem(Item):
     skus = Field()
 
 
+class OrsayItem(Item):
+    product_id = Field()
+    name = Field()
+    brand = Field()
+    description = Field()
+    image_urls = Field()
+    skus = Field()
+    url = Field()
+    meta = Field()
+
+
 class LanebryantItem(Item):
     product_id = Field()
     name = Field()
