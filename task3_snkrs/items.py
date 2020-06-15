@@ -10,8 +10,22 @@ class SnkrsItem(Item):
     skus = Field()
 
 
+class TestItem(Item):
+    product_id = Field()
+    category = Field()
+    title = Field()
+    brand = Field()
+    price = Field()
+    color = Field()
+    size = Field()
+    material_info = Field()
+    rating = Field()
+    arrival_date = Field()
+
+
 class OrsayItem(Item):
     product_id = Field()
+    category = Field()
     name = Field()
     brand = Field()
     description = Field()
@@ -19,6 +33,12 @@ class OrsayItem(Item):
     skus = Field()
     url = Field()
     meta = Field()
+    price = Field()
+    color = Field()
+    size = Field()
+    material_info = Field()
+    rating = Field()
+    arrival_date = Field()
 
 
 class LanebryantItem(Item):
@@ -35,8 +55,8 @@ class LanebryantItem(Item):
 
 class NeimanItem(Item):
     product_id = Field()
-    name = Field()
     brand = Field()
+    name = Field()
     description = Field()
     image_urls = Field()
     skus = Field()
