@@ -3,7 +3,7 @@ from scrapy.spiders import CrawlSpider, Rule
 from scrapy.linkextractors import LinkExtractor
 from w3lib.url import add_or_replace_parameter
 
-from task3_snkrs.items import OrsayItem
+# from task3_snkrs.task3_snkrs.items import OrsayItem
 
 
 class OrsaySpider(CrawlSpider):
@@ -38,7 +38,7 @@ class OrsaySpider(CrawlSpider):
                             callback=self.parse_pagination) for page in range(2, pages)]
 
     def parse_product(self, response):
-        item = OrsayItem()
+        item = dict()
         item['product_id'] = self.get_product_id(response)
         item['name'] = self.get_name(response)
         item['description'] = self.get_description(response)
